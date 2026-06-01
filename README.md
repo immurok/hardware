@@ -27,7 +27,7 @@
 - No hardware ECC accelerator — ECDH P-256 key generation takes ~2 seconds in software (via `uECC`). Mitigated by deferring computation to TMOS cooperative scheduler events so BLE stays responsive.
 - Closed-source BLE stack (WCH `libCH59xBLE.a`). The application-layer code is fully open source; the link layer is provided as a binary library.
 
-### Fingerprint Sensor: ZW3021
+### Fingerprint Sensor: R559S
 
 | Spec | Value |
 |------|-------|
@@ -42,7 +42,7 @@
 | Operating voltage | 3.3 V |
 | Touch detection | Capacitive, interrupt output (active high) |
 
-**Why ZW3021:**
+**Why R559S:**
 
 - Self-contained fingerprint processor — template enrollment, storage, and matching all happen on-chip. The host MCU only receives match/no-match results and template IDs, never raw biometric data.
 - Built-in capacitive touch detection with interrupt output, eliminating the need for a separate touch controller.
@@ -51,7 +51,7 @@
 
 **Security properties:**
 
-- Templates stored in ZW3021 internal flash, not accessible from the host MCU.
+- Templates stored in R559S internal flash, not accessible from the host MCU.
 - Module password protection (derived from device MAC address) prevents unauthorized access.
 - No API to extract raw template data — only match results are returned.
 
@@ -87,10 +87,10 @@ Current design is bus-powered via USB-C. No battery. Future revisions may add a 
                    ┌──────────────┐
             PA4  ──┤ UART3 RX     │   Debug serial (115200)
             PA5  ──┤ UART3 TX     │   Debug serial (115200)
-            PA8  ──┤ UART1 RX     │   ZW3021 data (57600 8N2)
-            PA9  ──┤ UART1 TX     │   ZW3021 data (57600 8N2)
-            PA12 ──┤ GPIO OUT     │   ZW3021 power (active high)
-            PA13 ──┤ GPIO IN      │   ZW3021 touch INT (rising edge)
+            PA8  ──┤ UART1 RX     │   R559S data (57600 8N2)
+            PA9  ──┤ UART1 TX     │   R559S data (57600 8N2)
+            PA12 ──┤ GPIO OUT     │   R559S power (active high)
+            PA13 ──┤ GPIO IN      │   R559S touch INT (rising edge)
             PA14 ──┤ GPIO IN      │   Button (falling edge, pull-up)
                    └──────────────┘
 ```
@@ -99,10 +99,10 @@ Current design is bus-powered via USB-C. No battery. Future revisions may add a 
 |-----|----------|-----------|------|------------|-------|
 | PA4 | UART3 RX | Input | Pull-up | Debug serial | 115200 baud |
 | PA5 | UART3 TX | Output | Push-pull 5 mA | Debug serial | 115200 baud |
-| PA8 | UART1 RX | Input | Pull-up | ZW3021 | 57600 baud, 8N2 |
-| PA9 | UART1 TX | Output | Push-pull 5 mA | ZW3021 | 57600 baud, 8N2 |
-| PA12 | Power control | Output | Push-pull 5 mA | ZW3021 | High = on |
-| PA13 | Touch interrupt | Input | Pull-down | ZW3021 | Rising edge, active high |
+| PA8 | UART1 RX | Input | Pull-up | R559S | 57600 baud, 8N2 |
+| PA9 | UART1 TX | Output | Push-pull 5 mA | R559S | 57600 baud, 8N2 |
+| PA12 | Power control | Output | Push-pull 5 mA | R559S | High = on |
+| PA13 | Touch interrupt | Input | Pull-down | R559S | Rising edge, active high |
 | PA14 | Button | Input | Pull-up | Physical button | Falling edge, active low |
 
 Unused pins are configured as pull-up inputs in `main()` to minimize leakage current.
@@ -125,7 +125,7 @@ When the fingerprint module is powered off, PA8/PA9/PA12 are switched to pull-do
         ┌─────────┼─────────┐
         │         │         │
    ┌────▼────┐    │    ┌────▼────┐
-   │ CH592F  │    │    │ ZW3021  │
+   │ CH592F  │    │    │ R559S  │
    │         │    │    │         │
    │    PA9 ─┼────┼───►│ RX      │
    │    PA8 ─┼────┼───◄│ TX      │
