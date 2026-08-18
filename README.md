@@ -74,71 +74,77 @@
 - HID keyboard capability is also used functionally: the device sends a Ctrl keypress to pre-trigger authentication dialogs before the fingerprint match notification arrives.
 - Actual command/response communication uses the custom GATT service, not HID reports.
 
-### Power: USB-C
+### Power: LiPo Battery + USB-C Charging
 
-Current design is bus-powered via USB-C. No battery. Future revisions may add a rechargeable LiPo cell for wireless operation.
+| Spec | Value |
+|------|-------|
+| Battery | LiPo cell, 110 mAh |
+| Charger | TI BQ21040 with NTC thermistor — hardware JEITA thermal cutoff (IEC 62368-1) |
+| Main regulator | XC6206 3.3 V LDO |
+| Sensor rail | Load switch gated by SENSOR_EN — the R559S is fully powered off between touches |
+| USB-C | Charging only — 6-pin power-only receptacle, no data lines |
+| Power switch | Slide switch between battery and the regulator input |
 
 ---
 
-## GPIO Pinout
+## GPIO Pinout (production hardware, VER=6)
 
-```
-                    CH592F (QFN28)
-                   ┌──────────────┐
-            PA4  ──┤ UART3 RX     │   Debug serial (115200)
-            PA5  ──┤ UART3 TX     │   Debug serial (115200)
-            PA8  ──┤ UART1 RX     │   R559S data (57600 8N2)
-            PA9  ──┤ UART1 TX     │   R559S data (57600 8N2)
-            PA12 ──┤ GPIO OUT     │   R559S power (active high)
-            PA13 ──┤ GPIO IN      │   R559S touch INT (rising edge)
-            PA14 ──┤ GPIO IN      │   Button (falling edge, pull-up)
-                   └──────────────┘
-```
-
-| Pin | Function | Direction | Mode | Peripheral | Notes |
-|-----|----------|-----------|------|------------|-------|
-| PA4 | UART3 RX | Input | Pull-up | Debug serial | 115200 baud |
-| PA5 | UART3 TX | Output | Push-pull 5 mA | Debug serial | 115200 baud |
-| PA8 | UART1 RX | Input | Pull-up | R559S | 57600 baud, 8N2 |
-| PA9 | UART1 TX | Output | Push-pull 5 mA | R559S | 57600 baud, 8N2 |
-| PA12 | Power control | Output | Push-pull 5 mA | R559S | High = on |
-| PA13 | Touch interrupt | Input | Pull-down | R559S | Rising edge, active high |
-| PA14 | Button | Input | Pull-up | Physical button | Falling edge, active low |
+| Pin | Function | Notes |
+|-----|----------|-------|
+| PA5 | UART3 TX — debug log output | 115200 8N1, debug builds only; **DEBUG** pad on the PCB |
+| PA8 | UART1 RX — R559S data / serial ISP | 57600 8N2 (sensor); ROM-bootloader flashing; **RXD1** pad |
+| PA9 | UART1 TX — R559S data / serial ISP | **TXD1** pad |
+| PA10/PA11 | 32.768 kHz crystal | |
+| PA14 | Battery voltage (AIN4) | 1/4 divider (3 MΩ / 1 MΩ) |
+| PB4 | Button | Active low, hardware RC debounce |
+| PB7 | LED red | |
+| PB10 | Tamper switch (ANTI_OPEN) | High = case opened; floating input |
+| PB12 | Fingerprint sensor power (SENSOR_EN) | Active high, gates the sensor's load switch |
+| PB13 | Touch interrupt (DETECT) | Active high |
+| PB14/PB15 | WCH 2-wire debug (SWDIO/SWCLK) | Not exposed on the production PCB |
+| PB22 | LED blue / **BOOT** | Held low at power-on → ROM bootloader (**BOOT** pad) |
+| PB23 | LED green | RST alternate function kept disabled |
 
 Unused pins are configured as pull-up inputs in `main()` to minimize leakage current.
 
-When the fingerprint module is powered off, PA8/PA9/PA12 are switched to pull-down inputs to prevent current leaking through ESD protection diodes. UART1 clock is also gated.
+When the fingerprint module is powered off, the UART1 pins are switched to pull-down inputs to prevent current leaking through ESD protection diodes, and the UART1 clock is gated.
+
+### Debug & Flashing Pads
+
+The back of the production PCB exposes **VCC5 / TXD1 / RXD1 / DEBUG / GND** pads and a separate **BOOT** pad (with its own GND):
+
+- **TXD1 / RXD1 + BOOT**: serial ISP firmware flashing via the CH592F ROM bootloader — see [firmware/README.md → Flashing](https://github.com/immurok/firmware#flashing)
+- **DEBUG**: UART3 log output (115200 8N1) from `debug` / `release-debug` firmware builds
 
 ---
 
 ## Wiring Diagram
 
 ```
-                USB-C
-                  │
-                  ▼
-              ┌───────┐
-              │ 3.3V  │
-              │ REG   │
-              └───┬───┘
-                  │ 3.3V
-        ┌─────────┼─────────┐
-        │         │         │
-   ┌────▼────┐    │    ┌────▼────┐
-   │ CH592F  │    │    │ R559S  │
-   │         │    │    │         │
-   │    PA9 ─┼────┼───►│ RX      │
-   │    PA8 ─┼────┼───◄│ TX      │
-   │   PA12 ─┼────┼───►│ PWR_EN  │
-   │   PA13 ─┼────┼───◄│ TOUCH   │
-   │         │    │    │         │
-   │    PA14─┼──[BTN]──┤         │
-   │         │         │         │
-   │  PA4/5 ─┼──[DBG]  │         │
-   └─────────┘         └─────────┘
+ USB-C (5V, power only)          LiPo 110 mAh
+        │                            │
+        ▼            charge          │
+   ┌─────────┐    ┌──────────┐       │
+   │ BQ21040 ├───►│ battery  ├── [power switch]
+   └─────────┘    └──────────┘       │
+                                     ▼
+                              ┌────────────┐ 3.3V
+                              │ XC6206 LDO ├──────┬──────────────┐
+                              └────────────┘      │              │
+                                             ┌────▼────┐   ┌─────▼─────┐
+                                             │ CH592F  │   │load switch│◄─ PB12 SENSOR_EN
+                                             │         │   └─────┬─────┘
+                                             │    PA9 ─┼───►┌────▼────┐
+                                             │    PA8 ─┼───◄│  R559S  │
+                                             │   PB13 ─┼───◄│  TOUCH  │
+                                             │         │    └─────────┘
+                                             │    PB4 ─┼──[BTN]
+                                             │   PB10 ─┼──[tamper switch]
+                                             │ PB7/22/23┼──[RGB LED]
+                                             └─────────┘
 ```
 
 ## Schematic & PCB
 
-- `schematic/` — Full schematic files (open source)
-- `pcb/` — PCB layout files (released after Kickstarter campaign)
+- [`schematic/Schematic1.6.5.pdf`](schematic/Schematic1.6.5.pdf) — complete schematic, current production revision (HW v1.6.5)
+- [`pcb/`](pcb/) — PCB layout renders (both sides); layout source files will be released after the Kickstarter campaign
